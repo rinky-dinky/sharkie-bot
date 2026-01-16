@@ -1,14 +1,12 @@
 import path from "path";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
-import fs from "fs/promises";
+import { access } from "fs/promises";
+import { constants as fsConstants } from "fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-type TYtDlpResult = {
-  url: string;
-  title: string;
-};
+type TYtDlpResult = { url: string; title: string };
 
 type TYtDlpOptions = {
   log: (...messages: unknown[]) => void;
@@ -18,20 +16,45 @@ type TYtDlpOptions = {
 
 const getYtDlpPath = (): string => {
   const binaryName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
-
   return path.join(__dirname, "bin", binaryName);
 };
 
-const getCookiesPath = (): string => {
-  return path.join(__dirname, "bin", "cookies.txt");
+const getCookiesPath = (): string => path.join(__dirname, "bin", "cookies.txt");
+
+const isYouTubeUrl = (url: string): boolean =>
+  url.includes("youtube.com") ||
+  url.includes("youtu.be") ||
+  url.startsWith("ytsearch:");
+
+const fileExists = async (p: string) => {
+  try {
+    await access(p, fsConstants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
 };
 
-const isYouTubeUrl = (url: string): boolean => {
-  return (
-    url.includes("youtube.com") ||
-    url.includes("youtu.be") ||
-    url.startsWith("ytsearch:")
-  );
+const runYtDlp = async (
+  cmd: string[],
+  options: TYtDlpOptions
+): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
+  const proc = Bun.spawn({
+    cmd,
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "ignore",
+  });
+
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  if (stderr.trim()) options.error("[yt-dlp]", stderr.trim());
+
+  return { stdout, stderr, exitCode };
 };
 
 const fetchYouTubeAudio = async (
@@ -44,53 +67,42 @@ const fetchYouTubeAudio = async (
   options.log("Using yt-dlp binary at:", ytDlpPath);
   options.log("Fetching audio URL from YouTube:", sourceUrl);
 
-  const command = [
-    ytDlpPath,
-    "--js-runtimes",
-    "bun",
-    "-f",
-    "bestaudio",
-    "-g",
-    sourceUrl,
-  ];
+  const base = [ytDlpPath, "--js-runtimes", "bun"];
+  const cookiesArgs = (await fileExists(cookiesPath))
+    ? ["--cookies", cookiesPath]
+    : [];
 
-  if (await fs.exists(cookiesPath)) {
-    command.splice(3, 0, "--cookies", cookiesPath);
+  const urlCmd = [...base, ...cookiesArgs, "-f", "bestaudio", "-g", sourceUrl];
+
+  options.log("Running command:", urlCmd.join(" "));
+
+  const urlRes = await runYtDlp(urlCmd, options);
+
+  if (urlRes.exitCode !== 0) {
+    throw new Error(`yt-dlp failed (exit ${urlRes.exitCode})`);
   }
 
-  options.log("Running command:", command.join(" "));
+  const url = urlRes.stdout.trim().split(/\r?\n/).filter(Boolean)[0];
 
-  try {
-    const urlProcess = Bun.spawnSync({
-      cmd: command,
-    });
+  if (!url) throw new Error("yt-dlp returned empty URL");
 
-    if (urlProcess.exitCode !== 0) {
-      throw new Error(`yt-dlp failed: ${urlProcess.stderr.toString()}`);
-    }
+  const titleCmd = [...base, ...cookiesArgs, "--get-title", sourceUrl];
 
-    const url = urlProcess.stdout.toString().trim();
+  options.log("Running command:", titleCmd.join(" "));
 
-    const titleProcess = Bun.spawnSync({
-      cmd: [ytDlpPath, "--js-runtimes", "bun", "--get-title", sourceUrl],
-    });
+  const titleRes = await runYtDlp(titleCmd, options);
 
-    if (titleProcess.exitCode !== 0) {
-      throw new Error(
-        `yt-dlp title fetch failed: ${titleProcess.stderr.toString()}`
-      );
-    }
-
-    const title = titleProcess.stdout.toString().trim();
-
-    options.log("Audio URL fetched:", url);
-    options.log("Title fetched:", title);
-
-    return { url, title };
-  } catch (error) {
-    options.error("Failed to fetch YouTube URL:", error);
-    throw error;
+  if (titleRes.exitCode !== 0) {
+    throw new Error(`yt-dlp title fetch failed (exit ${titleRes.exitCode})`);
   }
+
+  const title =
+    titleRes.stdout.trim().split(/\r?\n/).filter(Boolean)[0] ?? sourceUrl;
+
+  options.log("Audio URL fetched:", url);
+  options.log("Title fetched:", title);
+
+  return { url, title };
 };
 
 export { fetchYouTubeAudio, isYouTubeUrl };

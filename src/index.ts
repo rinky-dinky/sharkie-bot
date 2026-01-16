@@ -98,6 +98,10 @@ const onLoad = (ctx: PluginContext) => {
         throw new Error("Music is already starting. Please wait.");
       }
 
+      if (!input.query) {
+        throw new Error("You must provide a search query or URL.");
+      }
+
       ctx.log(`Query: ${input.query} in channel ${channelId}`);
 
       state.streamStarting = true;

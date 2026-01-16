@@ -12,7 +12,7 @@
   "type": "module",
   "scripts": {
     "build": "bun build src/index.ts --outdir dist/sharkord-music-bot --target bun --minify --format esm && cp package.json dist/sharkord-music-bot/ && mkdir -p dist/sharkord-music-bot/bin",
-    "build:dev": "bun run build && cp -r dist/* /home/martino/repos/sharkord/apps/server/data/plugins/"
+    "build:dev": "bun run build && cp -r bin/* dist/sharkord-music-bot/bin && chmod +x dist/sharkord-music-bot/bin/ffmpeg && chmod +x dist/sharkord-music-bot/bin/yt-dlp && cp -r dist/* /home/martino/repos/sharkord/apps/server/data/plugins/"
   },
   "dependencies": {
     "zod": "^4.3.5"

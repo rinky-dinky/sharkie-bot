@@ -16,6 +16,7 @@ type TMusicOptions = {
   audioSsrc: number;
   rtpHost: string;
   audioRtpPort: number;
+
   volume?: number; // 0-100, default 100
   log: (...messages: unknown[]) => void;
   error: (...messages: unknown[]) => void;
@@ -25,7 +26,6 @@ type TMusicOptions = {
 
 const getBinaryPath = (): string => {
   const binaryName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
-
   return path.join(__dirname, "bin", binaryName);
 };
 
@@ -33,7 +33,6 @@ const spawnMusicStream = async (
   options: TMusicOptions
 ): Promise<TMusicStreamResult> => {
   const ffmpegPath = getBinaryPath();
-
   options.log("Using FFmpeg binary at:", ffmpegPath);
 
   let inputSource = options.sourceUrl;
@@ -60,74 +59,61 @@ const spawnMusicStream = async (
     ];
   }
 
-  const volumeLevel = (options.volume ?? 100) / 100;
-
-  options.log(`Using volume level: ${volumeLevel * 100}%`);
+  const volumeLevel = Math.min(100, Math.max(0, options.volume ?? 100)) / 100;
 
   const ffmpegArgs = [
+    "-hide_banner",
+    "-nostats",
+    "-loglevel",
+    "warning",
+
     ...inputArgs,
     "-re",
     "-i",
     inputSource,
 
-    // Audio processing
-    "-vn", // No video
+    "-vn",
     "-af",
-    `volume=${volumeLevel}`, // Volume filter
+    `volume=${volumeLevel}`,
     "-c:a",
     "libopus",
     "-ar",
-    "48000", // 48kHz sample rate
+    "48000",
     "-ac",
-    "2", // Stereo
+    "2",
     "-b:a",
-    "192k", // 192kbps bitrate
+    "192k",
     "-application",
-    "audio", // Optimize for music
+    "audio",
 
-    // RTP output
     "-payload_type",
-    options.audioPayloadType.toString(),
+    String(options.audioPayloadType),
     "-ssrc",
-    options.audioSsrc.toString(),
+    String(options.audioSsrc),
     "-f",
     "rtp",
     `rtp://${options.rtpHost}:${options.audioRtpPort}?pkt_size=1200`,
   ];
 
-  options.log("Starting music stream with FFmpeg...");
-  options.log("Command:", ffmpegPath, ...ffmpegArgs);
+  options.debug("Starting music stream with FFmpeg...");
+  options.debug("Command:", ffmpegPath, ...ffmpegArgs);
 
   const ffmpegProcess = Bun.spawn({
     cmd: [ffmpegPath, ...ffmpegArgs],
-    stdout: "pipe",
+    stdout: "ignore",
     stderr: "pipe",
     stdin: "ignore",
   });
 
+  // stderr forwarder (with a tiny yield to prevent event-loop starvation)
   (async () => {
-    const reader = ffmpegProcess.stdout.getReader();
-    const decoder = new TextDecoder();
+    if (!ffmpegProcess.stderr) return;
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) break;
-
-        const text = decoder.decode(value, { stream: true });
-
-        if (text.trim()) options.debug("[FFmpeg]", text.trim());
-      }
-    } catch (error) {
-      options.error("[FFmpeg stdout error]", error);
-    }
-  })();
-
-  (async () => {
     const reader = ffmpegProcess.stderr.getReader();
     const decoder = new TextDecoder();
 
+    let reads = 0;
+
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -136,19 +122,23 @@ const spawnMusicStream = async (
 
         const text = decoder.decode(value, { stream: true });
 
-        if (text.trim()) options.debug("[FFmpeg]", text.trim());
+        if (text.trim()) options.error("[FFmpeg]", text.trim());
+
+        reads++;
+
+        if (reads % 25 === 0) await new Promise<void>((r) => setTimeout(r, 0));
       }
-    } catch (error) {
-      options.error("[FFmpeg stderr error]", error);
+    } catch (err) {
+      options.error("[FFmpeg stderr error]", err);
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {}
     }
   })();
 
-  ffmpegProcess.exited.then((exitCode) => {
-    options.debug("FFmpeg process exited with code:", exitCode);
-
-    if (options.onEnd) {
-      options.onEnd();
-    }
+  ffmpegProcess.exited.then(() => {
+    options.onEnd?.();
   });
 
   return { process: ffmpegProcess, title };
@@ -157,9 +147,10 @@ const spawnMusicStream = async (
 const killMusicStream = (
   process: ReturnType<typeof Bun.spawn> | null
 ): void => {
-  if (process) {
-    process.kill();
-  }
+  if (!process) return;
+  try {
+    process.kill("SIGTERM");
+  } catch {}
 };
 
 export { spawnMusicStream, killMusicStream };
