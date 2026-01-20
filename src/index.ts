@@ -1,5 +1,4 @@
-import type { PluginContext } from "@sharkord/plugin-sdk";
-import { StreamKind } from "../../../repos/sharkord/packages/shared/src";
+import { type StreamKind, type PluginContext } from "@sharkord/plugin-sdk";
 import { spawnMusicStream, killMusicStream } from "./ffmpeg";
 import type { TMusicStreamResult } from "./ffmpeg";
 
@@ -9,6 +8,9 @@ type ChannelStreamState = {
   ffmpegProcess: TMusicStreamResult["process"] | null;
   audioProducer: any;
   audioTransport: any;
+  router: any;
+  routerCloseHandler: ((...args: unknown[]) => void) | null;
+  producerCloseHandler: ((...args: unknown[]) => void) | null;
   currentSong: string | null;
   streamActive: boolean;
   streamStarting: boolean;
@@ -25,6 +27,9 @@ const getState = (channelId: number): ChannelStreamState => {
       ffmpegProcess: null,
       audioProducer: null,
       audioTransport: null,
+      router: null,
+      routerCloseHandler: null,
+      producerCloseHandler: null,
       currentSong: null,
       streamActive: false,
       streamStarting: false,
@@ -39,17 +44,34 @@ const getState = (channelId: number): ChannelStreamState => {
 
 const cleanupChannel = (channelId: number) => {
   const state = channelStreams.get(channelId);
+
   if (!state) return;
 
   killMusicStream(state.ffmpegProcess);
 
   state.ffmpegProcess = null;
 
-  state.audioProducer?.close();
-  state.audioTransport?.close();
+  if (state.producerCloseHandler) {
+    state.audioProducer.observer.off("close", state.producerCloseHandler);
+  }
+
+  if (state.routerCloseHandler) {
+    state.router.off("@close", state.routerCloseHandler);
+  }
+
+  try {
+    state.audioProducer?.close();
+  } catch {}
+
+  try {
+    state.audioTransport?.close();
+  } catch {}
 
   state.audioProducer = null;
   state.audioTransport = null;
+  state.router = null;
+  state.routerCloseHandler = null;
+  state.producerCloseHandler = null;
   state.streamActive = false;
   state.currentSong = null;
   state.streamStarting = false;
@@ -90,7 +112,7 @@ const onLoad = (ctx: PluginContext) => {
 
       if (state.streamActive) {
         throw new Error(
-          "Music is already playing in this channel. Use /stop first."
+          "Music is already playing in this channel. Use /stop first.",
         );
       }
 
@@ -114,10 +136,14 @@ const onLoad = (ctx: PluginContext) => {
         const { announcedAddress, ip } =
           await ctx.actions.voice.getListenInfo();
 
-        router.on("@close", () => {
+        state.router = router;
+
+        state.routerCloseHandler = () => {
           ctx.log("Router closed, cleaning up channel", channelId);
           cleanupChannel(channelId);
-        });
+        };
+
+        state.router.on("@close", state.routerCloseHandler);
 
         const audioSsrc = Math.floor(Math.random() * 1e9);
 
@@ -149,6 +175,7 @@ const onLoad = (ctx: PluginContext) => {
         });
 
         let sourceUrl = input.query;
+
         if (!/^https?:\/\//.test(sourceUrl)) {
           sourceUrl = `ytsearch:${sourceUrl}`;
         }
@@ -178,13 +205,13 @@ const onLoad = (ctx: PluginContext) => {
         ctx.actions.voice.addExternalStream(
           channelId,
           `🎵 ${result.title}`,
-          StreamKind.EXTERNAL_AUDIO,
-          state.audioProducer
+          "external_audio" as StreamKind.EXTERNAL_AUDIO,
+          state.audioProducer,
         );
 
-        state.audioProducer.observer.on("close", () => {
-          cleanupChannel(channelId);
-        });
+        state.producerCloseHandler = () => cleanupChannel(channelId);
+
+        state.audioProducer.observer.on("close", state.producerCloseHandler);
 
         state.ffmpegProcess = result.process;
         state.currentSong = result.title;
