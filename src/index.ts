@@ -1,5 +1,6 @@
 import { type StreamKind, type PluginContext } from "@sharkord/plugin-sdk";
 import { spawnMusicStream, killMusicStream } from "./ffmpeg";
+import { isYouTubeUrl } from "./yt-dlp";
 import type { TMusicStreamResult } from "./ffmpeg";
 
 let debug = false;
@@ -89,6 +90,116 @@ const forceClean = () => {
   channelStreams.clear();
 };
 
+const startMusicStream = async (
+  ctx: PluginContext,
+  channelId: number,
+  sourceUrl: string
+) => {
+  const state = getState(channelId);
+
+  if (state.streamActive) {
+    throw new Error(
+      "Music is already playing in this channel. Use /stop first."
+    );
+  }
+
+  if (state.streamStarting) {
+    throw new Error("Music is already starting. Please wait.");
+  }
+
+  state.streamStarting = true;
+
+  try {
+    const router = ctx.actions.voice.getRouter(channelId);
+
+    if (!router) throw new Error("Could not access voice channel");
+
+    const { announcedAddress, ip } = await ctx.actions.voice.getListenInfo();
+
+    state.router = router;
+
+    state.routerCloseHandler = () => {
+      ctx.log("Router closed, cleaning up channel", channelId);
+      cleanupChannel(channelId);
+    };
+
+    state.router.on("@close", state.routerCloseHandler);
+
+    const audioSsrc = Math.floor(Math.random() * 1e9);
+
+    state.audioTransport = await router.createPlainTransport({
+      listenIp: {
+        ip,
+        announcedIp: announcedAddress,
+      },
+      rtcpMux: true,
+      comedia: true,
+      enableSrtp: false,
+    });
+
+    state.audioProducer = await state.audioTransport.produce({
+      kind: "audio",
+      rtpParameters: {
+        codecs: [
+          {
+            mimeType: "audio/opus",
+            payloadType: 111,
+            clockRate: 48000,
+            channels: 2,
+            parameters: {},
+            rtcpFeedback: [],
+          },
+        ],
+        encodings: [{ ssrc: audioSsrc }],
+      },
+    });
+
+    ctx.log("Final source URL:", sourceUrl);
+
+    const result = await spawnMusicStream({
+      sourceUrl,
+      audioPayloadType: 111,
+      audioSsrc,
+      rtpHost: ip,
+      audioRtpPort: state.audioTransport.tuple.localPort,
+      volume: state.volume,
+      error: (...m) => ctx.error(...m),
+      log: (...m) => ctx.log(...m),
+      debug: (...m) => {
+        if (debug) {
+          ctx.debug(...m);
+        }
+      },
+      onEnd: () => {
+        ctx.log("Music ended in channel", channelId);
+        cleanupChannel(channelId);
+      },
+    });
+
+    ctx.actions.voice.addExternalStream(
+      channelId,
+      `🎵 ${result.title}`,
+      "external_audio" as StreamKind.EXTERNAL_AUDIO,
+      state.audioProducer
+    );
+
+    state.producerCloseHandler = () => cleanupChannel(channelId);
+
+    state.audioProducer.observer.on("close", state.producerCloseHandler);
+
+    state.ffmpegProcess = result.process;
+    state.currentSong = result.title;
+    state.streamActive = true;
+
+    return `Now playing: ${result.title}`;
+  } catch (err) {
+    cleanupChannel(channelId);
+    throw err;
+  } finally {
+    state.streamStarting = false;
+  }
+};
+
 const onLoad = (ctx: PluginContext) => {
   ctx.commands.register<{ query: string }>({
     name: "play",
@@ -108,122 +219,55 @@ const onLoad = (ctx: PluginContext) => {
         throw new Error("You must be in a voice channel to play music.");
       }
 
-      const state = getState(channelId);
-
-      if (state.streamActive) {
-        throw new Error(
-          "Music is already playing in this channel. Use /stop first.",
-        );
-      }
-
-      if (state.streamStarting) {
-        throw new Error("Music is already starting. Please wait.");
-      }
-
       if (!input.query) {
         throw new Error("You must provide a search query or URL.");
       }
 
       ctx.log(`Query: ${input.query} in channel ${channelId}`);
 
-      state.streamStarting = true;
+      let sourceUrl = input.query;
 
-      try {
-        const router = ctx.actions.voice.getRouter(channelId);
-
-        if (!router) throw new Error("Could not access voice channel");
-
-        const { announcedAddress, ip } =
-          await ctx.actions.voice.getListenInfo();
-
-        state.router = router;
-
-        state.routerCloseHandler = () => {
-          ctx.log("Router closed, cleaning up channel", channelId);
-          cleanupChannel(channelId);
-        };
-
-        state.router.on("@close", state.routerCloseHandler);
-
-        const audioSsrc = Math.floor(Math.random() * 1e9);
-
-        state.audioTransport = await router.createPlainTransport({
-          listenIp: {
-            ip,
-            announcedIp: announcedAddress,
-          },
-          rtcpMux: true,
-          comedia: true,
-          enableSrtp: false,
-        });
-
-        state.audioProducer = await state.audioTransport.produce({
-          kind: "audio",
-          rtpParameters: {
-            codecs: [
-              {
-                mimeType: "audio/opus",
-                payloadType: 111,
-                clockRate: 48000,
-                channels: 2,
-                parameters: {},
-                rtcpFeedback: [],
-              },
-            ],
-            encodings: [{ ssrc: audioSsrc }],
-          },
-        });
-
-        let sourceUrl = input.query;
-
-        if (!/^https?:\/\//.test(sourceUrl)) {
-          sourceUrl = `ytsearch:${sourceUrl}`;
-        }
-
-        ctx.log("Final source URL:", sourceUrl);
-
-        const result = await spawnMusicStream({
-          sourceUrl,
-          audioPayloadType: 111,
-          audioSsrc,
-          rtpHost: ip,
-          audioRtpPort: state.audioTransport.tuple.localPort,
-          volume: state.volume,
-          error: (...m) => ctx.error(...m),
-          log: (...m) => ctx.log(...m),
-          debug: (...m) => {
-            if (debug) {
-              ctx.debug(...m);
-            }
-          },
-          onEnd: () => {
-            ctx.log("Music ended in channel", channelId);
-            cleanupChannel(channelId);
-          },
-        });
-
-        ctx.actions.voice.addExternalStream(
-          channelId,
-          `🎵 ${result.title}`,
-          "external_audio" as StreamKind.EXTERNAL_AUDIO,
-          state.audioProducer,
-        );
-
-        state.producerCloseHandler = () => cleanupChannel(channelId);
-
-        state.audioProducer.observer.on("close", state.producerCloseHandler);
-
-        state.ffmpegProcess = result.process;
-        state.currentSong = result.title;
-        state.streamActive = true;
-
-        return `Now playing: ${result.title}`;
-      } catch (err) {
-        cleanupChannel(channelId);
-        throw err;
-      } finally {
-        state.streamStarting = false;
+      if (!/^https?:\/\//.test(sourceUrl)) {
+        sourceUrl = `ytsearch:${sourceUrl}`;
       }
+
+      return startMusicStream(ctx, channelId, sourceUrl);
+    },
+  });
+
+  ctx.commands.register<{ url: string }>({
+    name: "play_direct",
+    description: "Play music from a direct MP3 URL",
+    args: [
+      {
+        name: "url",
+        description: "Direct MP3 URL",
+        type: "string",
+        required: true,
+      },
+    ],
+    executes: async (invoker, input) => {
+      const channelId = invoker.currentVoiceChannelId;
+
+      if (!channelId) {
+        throw new Error("You must be in a voice channel to play music.");
+      }
+
+      if (!input.url) {
+        throw new Error("You must provide a direct audio URL.");
+      }
+
+      if (!/^https?:\/\//.test(input.url)) {
+        throw new Error("You must provide a direct http(s) URL.");
+      }
+
+      if (isYouTubeUrl(input.url)) {
+        throw new Error("YouTube URLs are not supported by /play_direct.");
+      }
+
+      ctx.log(`Direct URL: ${input.url} in channel ${channelId}`);
+
+      return startMusicStream(ctx, channelId, input.url);
     },
   });
 
