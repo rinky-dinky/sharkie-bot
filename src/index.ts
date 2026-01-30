@@ -181,8 +181,8 @@ const startMusicStream = async (
     ctx.actions.voice.createStream({
       key: "music",
       channelId,
-      title: "Music Bot Stream",
-      avatarUrl: "https://i.imgur.com/v8sf4BM.png",
+      title: result.title,
+      avatarUrl: "https://i.imgur.com/uVBNUK9.png",
       producers: {
         audio: state.audioProducer,
       },
