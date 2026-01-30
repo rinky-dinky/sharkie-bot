@@ -37,7 +37,7 @@ const fileExists = async (p: string) => {
 
 const runYtDlp = async (
   cmd: string[],
-  options: TYtDlpOptions
+  options: TYtDlpOptions,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
   const proc = Bun.spawn({
     cmd,
@@ -59,7 +59,7 @@ const runYtDlp = async (
 
 const fetchYouTubeAudio = async (
   sourceUrl: string,
-  options: TYtDlpOptions
+  options: TYtDlpOptions,
 ): Promise<TYtDlpResult> => {
   const ytDlpPath = getYtDlpPath();
   const cookiesPath = getCookiesPath();

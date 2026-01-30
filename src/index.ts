@@ -1,4 +1,4 @@
-import { type StreamKind, type PluginContext } from "@sharkord/plugin-sdk";
+import { type PluginContext } from "@sharkord/plugin-sdk";
 import { spawnMusicStream, killMusicStream } from "./ffmpeg";
 import { isYouTubeUrl } from "./yt-dlp";
 import type { TMusicStreamResult } from "./ffmpeg";
@@ -93,13 +93,13 @@ const forceClean = () => {
 const startMusicStream = async (
   ctx: PluginContext,
   channelId: number,
-  sourceUrl: string
+  sourceUrl: string,
 ) => {
   const state = getState(channelId);
 
   if (state.streamActive) {
     throw new Error(
-      "Music is already playing in this channel. Use /stop first."
+      "Music is already playing in this channel. Use /stop first.",
     );
   }
 
@@ -176,12 +176,15 @@ const startMusicStream = async (
       },
     });
 
-    ctx.actions.voice.addExternalStream(
+    ctx.actions.voice.createStream({
+      key: "music",
       channelId,
-      `🎵 ${result.title}`,
-      "external_audio" as StreamKind.EXTERNAL_AUDIO,
-      state.audioProducer
-    );
+      title: "Music Bot Stream",
+      avatarUrl: "https://commons.wikimedia.org/wiki/File:Music_logo.png",
+      producers: {
+        audio: state.audioProducer,
+      },
+    });
 
     state.producerCloseHandler = () => cleanupChannel(channelId);
 

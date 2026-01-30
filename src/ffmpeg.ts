@@ -30,7 +30,7 @@ const getBinaryPath = (): string => {
 };
 
 const spawnMusicStream = async (
-  options: TMusicOptions
+  options: TMusicOptions,
 ): Promise<TMusicStreamResult> => {
   const ffmpegPath = getBinaryPath();
   options.log("Using FFmpeg binary at:", ffmpegPath);
@@ -145,7 +145,7 @@ const spawnMusicStream = async (
 };
 
 const killMusicStream = (
-  process: ReturnType<typeof Bun.spawn> | null
+  process: ReturnType<typeof Bun.spawn> | null,
 ): void => {
   if (!process) return;
   try {
