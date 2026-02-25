@@ -16,7 +16,7 @@
   "scripts": {
     "build": "bun build.ts && mkdir -p dist/sharkord-music-bot/bin",
     "build:dev": "bun run build && cp -r bin/* dist/sharkord-music-bot/bin && chmod +x dist/sharkord-music-bot/bin/ffmpeg && chmod +x dist/sharkord-music-bot/bin/yt-dlp && cp -r dist/* /home/martino/repos/sharkord/apps/server/data/plugins/",
-    "build:zip": "zip -r sharkord-music-bot.zip dist/*"
+    "build:zip": "bun run build && rm -rf dist/sharkord-music-bot/bin* && zip -r sharkord-music-bot.zip dist/*"
   },
   "dependencies": {
     "zod": "^4.3.5"
