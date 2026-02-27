@@ -19,8 +19,13 @@ Simple music bot plugin for Sharkord that allows streaming music from youtube di
 
 ## Commands
 
-- `/play <query>`: Plays a song in the voice channel you are currently in. The query can be a YouTube URL or a search term.
-- `/stop`: Stops the music.
+- `/play <query>`: Adds a track to the queue. Supports search terms, YouTube URLs, direct URLs, and YouTube playlist URLs.
+- `/play_direct <url>`: Adds a direct audio URL to the queue.
+- `/queue`: Shows the current queue.
+- `/skip`: Skips the current song.
+- `/skipto <index>`: Skips directly to an index in the queue (`1` = current track).
+- `/clearqueue`: Clears all queued tracks and keeps the current one playing.
+- `/stop`: Stops playback and clears the queue.
 - `/volume <0-100>`: Sets the playback volume (default is 50).
 - `/nowplaying`: Shows the currently playing song.
 
