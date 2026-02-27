@@ -1,7 +1,7 @@
 import type { BunPlugin } from "bun";
 import fs from "fs/promises";
 
-const pluginId = "sharkord-music-bot";
+const pluginId = "sharkie-bot";
 const outdir = `dist/${pluginId}`;
 
 const clientGlobals: BunPlugin = {
