@@ -1,5 +1,5 @@
 {
-  "name": "sharkord-music-bot",
+  "name": "sharkie-bot",
   "version": "0.0.2",
   "module": "src/index.ts",
   "sharkord": {
@@ -7,16 +7,15 @@
       "server": "server.js",
       "client": "client.js"
     },
-    "author": "Diogo Martino",
-    "homepage": "https://github.com/diogomartino/sharkord-music-bot",
+    "author": "Sharkie Bot Contributors",
     "description": "A plugin that allows users to stream music directly within Sharkord",
     "logo": "https://i.imgur.com/uVBNUK9.png"
   },
   "type": "module",
   "scripts": {
-    "build": "bun build.ts && mkdir -p dist/sharkord-music-bot/bin",
-    "build:dev": "bun run build && cp -r bin/* dist/sharkord-music-bot/bin && chmod +x dist/sharkord-music-bot/bin/ffmpeg && chmod +x dist/sharkord-music-bot/bin/yt-dlp && cp -r dist/* /home/martino/repos/sharkord/apps/server/data/plugins/",
-    "build:zip": "bun run build && rm -rf dist/sharkord-music-bot/bin* && zip -r sharkord-music-bot.zip dist/*"
+    "build": "bun build.ts && mkdir -p dist/sharkie-bot/bin",
+    "build:dev": "bun run build && cp -r bin/* dist/sharkie-bot/bin && chmod +x dist/sharkie-bot/bin/ffmpeg && chmod +x dist/sharkie-bot/bin/yt-dlp && cp -r dist/* ~/.config/sharkord/plugins/",
+    "build:zip": "bun run build && rm -rf dist/sharkie-bot/bin* && zip -r sharkie-bot.zip dist/*"
   },
   "dependencies": {
     "zod": "^4.3.5"
