@@ -7,11 +7,17 @@ import { constants as fsConstants } from "fs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 type TYtDlpResult = { url: string; title: string };
+type TYtDlpPlaylistEntry = { sourceUrl: string; title: string };
 
 type TYtDlpOptions = {
   log: (...messages: unknown[]) => void;
   debug: (...messages: unknown[]) => void;
   error: (...messages: unknown[]) => void;
+};
+
+type TYtDlpPlaylistOptions = TYtDlpOptions & {
+  start?: number;
+  end?: number;
 };
 
 const getYtDlpPath = (): string => {
@@ -25,6 +31,9 @@ const isYouTubeUrl = (url: string): boolean =>
   url.includes("youtube.com") ||
   url.includes("youtu.be") ||
   url.startsWith("ytsearch:");
+
+const isYouTubePlaylistUrl = (url: string): boolean =>
+  isYouTubeUrl(url) && /[?&]list=/.test(url);
 
 const fileExists = async (p: string) => {
   try {
@@ -57,20 +66,26 @@ const runYtDlp = async (
   return { stdout, stderr, exitCode };
 };
 
-const fetchYouTubeAudio = async (
-  sourceUrl: string,
-  options: TYtDlpOptions,
-): Promise<TYtDlpResult> => {
+const getBaseCommand = async () => {
   const ytDlpPath = getYtDlpPath();
   const cookiesPath = getCookiesPath();
-
-  options.log("Using yt-dlp binary at:", ytDlpPath);
-  options.log("Fetching audio URL from YouTube:", sourceUrl);
 
   const base = [ytDlpPath, "--js-runtimes", "bun"];
   const cookiesArgs = (await fileExists(cookiesPath))
     ? ["--cookies", cookiesPath]
     : [];
+
+  return { ytDlpPath, base, cookiesArgs };
+};
+
+const fetchYouTubeAudio = async (
+  sourceUrl: string,
+  options: TYtDlpOptions,
+): Promise<TYtDlpResult> => {
+  const { ytDlpPath, base, cookiesArgs } = await getBaseCommand();
+
+  options.log("Using yt-dlp binary at:", ytDlpPath);
+  options.log("Fetching audio URL from YouTube:", sourceUrl);
 
   const urlCmd = [...base, ...cookiesArgs, "-f", "bestaudio", "-g", sourceUrl];
 
@@ -105,5 +120,68 @@ const fetchYouTubeAudio = async (
   return { url, title };
 };
 
-export { fetchYouTubeAudio, isYouTubeUrl };
-export type { TYtDlpResult, TYtDlpOptions };
+const fetchYouTubePlaylistEntries = async (
+  playlistUrl: string,
+  options: TYtDlpPlaylistOptions,
+): Promise<TYtDlpPlaylistEntry[]> => {
+  const { ytDlpPath, base, cookiesArgs } = await getBaseCommand();
+
+  options.log("Using yt-dlp binary at:", ytDlpPath);
+  options.log("Fetching playlist entries from:", playlistUrl);
+
+  const rangeArgs: string[] = [];
+
+  if (options.start && options.end) {
+    rangeArgs.push("--playlist-items", `${options.start}:${options.end}`);
+  } else if (options.start) {
+    rangeArgs.push("--playlist-start", String(options.start));
+  } else if (options.end) {
+    rangeArgs.push("--playlist-end", String(options.end));
+  }
+
+  const cmd = [
+    ...base,
+    ...cookiesArgs,
+    "--flat-playlist",
+    "--print",
+    "%(url)s\t%(title)s",
+    ...rangeArgs,
+    playlistUrl,
+  ];
+
+  options.debug("Running playlist command:", cmd.join(" "));
+
+  const response = await runYtDlp(cmd, options);
+
+  if (response.exitCode !== 0) {
+    throw new Error(`yt-dlp playlist fetch failed (exit ${response.exitCode})`);
+  }
+
+  const entries = response.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [videoId, ...titleParts] = line.split("\t");
+
+      if (!videoId) return null;
+
+      const title = titleParts.join("\t").trim() || videoId;
+      const url = videoId.startsWith("http")
+        ? videoId
+        : `https://www.youtube.com/watch?v=${videoId}`;
+
+      return { sourceUrl: url, title };
+    })
+    .filter((entry): entry is TYtDlpPlaylistEntry => entry !== null);
+
+  return entries;
+};
+
+export {
+  fetchYouTubeAudio,
+  fetchYouTubePlaylistEntries,
+  isYouTubeUrl,
+  isYouTubePlaylistUrl,
+};
+export type { TYtDlpResult, TYtDlpOptions, TYtDlpPlaylistEntry };
