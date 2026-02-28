@@ -4,7 +4,7 @@ Simple music bot plugin for Sharkord that allows streaming music from youtube di
 
 ## Installation
 
-1. Download the latest release from the [Releases](https://github.com/sharkie-bot) page.
+1. Download the latest release from the [Releases](https://github.com/rinky-dinky/sharkie-bot/releases) page.
 2. Move the `sharkie-bot` folder to your Sharkord plugins directory, typically located at `~/.config/sharkord/plugins`.
 3. Download both the `ffmpeg` and `yt-dlp` binaries and place them inside the `sharkord/plugins/sharkie-bot/bin` folder.
 4. Make both the `ffmpeg` and `yt-dlp` binaries have execution permissions (on UNIX systems, you can run `chmod +x ./ffmpeg` and `chmod +x ./yt-dlp` in the terminal).
