@@ -1,14 +1,14 @@
 {
   "name": "sharkie-bot",
-  "version": "0.0.2",
+  "version": "0.0.1",
   "module": "src/index.ts",
   "sharkord": {
     "entry": {
       "server": "server.js",
       "client": "client.js"
     },
-    "author": "Diogo Martino",
-    "homepage": "https://github.com/sharkie-bot",
+    "author": "rinky-dinky",
+    "homepage": "https://github.com/rinky-dinky/sharkie-bot",
     "description": "A plugin that allows users to stream music directly within Sharkord",
     "logo": "https://i.imgur.com/uVBNUK9.png"
   },
