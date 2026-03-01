@@ -39,5 +39,6 @@ Well, turns out this is a bot. If you encounter this issue, you can try the foll
 2. Pass your cookies to yt-dlp to a file in `plugins/sharkie-bot/bin/cookies.txt`.
 
 ## Note
-This is just a vibe-coded project, use at your own risk
+This is just a vibe-coded project, use at your own risk.
+
 All credit goes to [Diogo Martino](https://github.com/diogomartino/sharkord-music-bot)
