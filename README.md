@@ -1,6 +1,6 @@
 # sharkie-bot
 
-Simple music bot plugin for Sharkord that allows streaming music from youtube directly to voice channels.
+Simple music bot plugin for [Sharkord](https://github.com/Sharkord/sharkord) that allows streaming music from youtube directly to voice channels.
 
 ## Installation
 
